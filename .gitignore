@@ -1,0 +1,27 @@
+# Maven / Java build artifacts
+**/target/
+**/build/
+*.class
+*.jar
+*.war
+*.ear
+
+# Logs
+*.log
+logs/
+
+# IDE files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime temp/data
+tmp/
+temp/

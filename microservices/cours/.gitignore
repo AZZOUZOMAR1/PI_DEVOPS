@@ -1,0 +1,17 @@
+# Build artifacts
+**/target/
+
+# Maven wrapper cache (optional to track)
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE / OS
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
