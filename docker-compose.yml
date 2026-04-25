@@ -6,7 +6,7 @@ services:
     image: omarazzouz/club:latest
     container_name: club-service
     ports:
-      - "8080:8080"
+      - "8085:8080"
     restart: unless-stopped
     networks:
       - pidev-network
@@ -15,7 +15,7 @@ services:
     image: omarazzouz/evenement:latest
     container_name: evenement-service
     ports:
-      - "8081:8081"
+      - "8086:8081"
     restart: unless-stopped
     networks:
       - pidev-network
