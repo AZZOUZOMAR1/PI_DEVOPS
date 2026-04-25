@@ -16,7 +16,7 @@ pipeline {
 
         stage('2. Build Image Docker Club') {
             steps {
-                dir('club') {
+                dir('microservices/club') {
                     sh "docker build -t ${CLUB_IMAGE}:${TAG} ."
                     sh "docker tag ${CLUB_IMAGE}:${TAG} ${CLUB_IMAGE}:latest"
                 }
@@ -25,7 +25,7 @@ pipeline {
 
         stage('3. Build Image Docker Evenement') {
             steps {
-                dir('evenement') {
+                dir('microservices/Evenement') {
                     sh "docker build -t ${EVENT_IMAGE}:${TAG} ."
                     sh "docker tag ${EVENT_IMAGE}:${TAG} ${EVENT_IMAGE}:latest"
                 }
