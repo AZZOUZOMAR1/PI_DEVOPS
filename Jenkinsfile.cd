@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_USER = "omarazzouz"
+        CLUB_IMAGE     = "${DOCKERHUB_USER}/club"
+        EVENT_IMAGE    = "${DOCKERHUB_USER}/evenement"
+        TAG            = "${env.BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('1. Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('2. Build Image Docker Club') {
+            steps {
+                dir('club') {
+                    sh "docker build -t ${CLUB_IMAGE}:${TAG} ."
+                    sh "docker tag ${CLUB_IMAGE}:${TAG} ${CLUB_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('3. Build Image Docker Evenement') {
+            steps {
+                dir('evenement') {
+                    sh "docker build -t ${EVENT_IMAGE}:${TAG} ."
+                    sh "docker tag ${EVENT_IMAGE}:${TAG} ${EVENT_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('4. Push Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                    sh "docker push ${CLUB_IMAGE}:${TAG}"
+                    sh "docker push ${CLUB_IMAGE}:latest"
+                    sh "docker push ${EVENT_IMAGE}:${TAG}"
+                    sh "docker push ${EVENT_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('5. Déploiement docker-compose') {
+            steps {
+                sh "docker compose -f docker-compose.yml pull"
+                sh "docker compose -f docker-compose.yml up -d --force-recreate club evenement"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ CD terminé — Build #${TAG} déployé avec succès"
+        }
+        failure {
+            echo "❌ CD échoué — vérifiez les logs"
+        }
+    }
+}
