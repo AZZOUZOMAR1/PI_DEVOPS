@@ -2,66 +2,44 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USER = "omarazzouz"
-        CLUB_IMAGE     = "${DOCKERHUB_USER}/club"
-        EVENT_IMAGE    = "${DOCKERHUB_USER}/evenement"
-        TAG            = "${env.BUILD_NUMBER}"
+        GIT_URL         = 'https://github.com/AZZOUZOMAR1/PI_DEVOPS.git'
+        GIT_BRANCH      = 'main'
+        GIT_CREDENTIALS = 'JENKINS_OMAR'
+
+        SERVICE_NAME = 'club'
+        COMPOSE_FILE = 'docker-compose.yml'
+        HEALTH_URL   = 'http://localhost:8081/actuator/health'
     }
 
     stages {
-
-        stage('1. Checkout') {
-            steps { checkout scm }
-        }
-
-        stage('2. Build Image Docker Club') {
+        stage('1. Git Pull') {
             steps {
-                dir('microservices/club') {
-                    sh "docker build -t ${CLUB_IMAGE}:${TAG} ."
-                    sh "docker tag ${CLUB_IMAGE}:${TAG} ${CLUB_IMAGE}:latest"
-                }
+                git branch: "${GIT_BRANCH}",
+                    credentialsId: "${GIT_CREDENTIALS}",
+                    url: "${GIT_URL}"
+                sh "git pull origin ${GIT_BRANCH}"
             }
         }
 
-        stage('3. Build Image Docker Evenement') {
+        stage('2. Docker Pull + Deploy Club') {
             steps {
-                dir('microservices/Evenement') {
-                    sh "docker build -t ${EVENT_IMAGE}:${TAG} ."
-                    sh "docker tag ${EVENT_IMAGE}:${TAG} ${EVENT_IMAGE}:latest"
-                }
+                sh "docker compose -f ${COMPOSE_FILE} pull ${SERVICE_NAME}"
+                sh "docker compose -f ${COMPOSE_FILE} up -d --force-recreate ${SERVICE_NAME}"
             }
         }
 
-        stage('4. Push Docker Hub') {
+        stage('3. Monitoring Club') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                    sh "docker push ${CLUB_IMAGE}:${TAG}"
-                    sh "docker push ${CLUB_IMAGE}:latest"
-                    sh "docker push ${EVENT_IMAGE}:${TAG}"
-                    sh "docker push ${EVENT_IMAGE}:latest"
-                }
+                sh "docker compose -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
+                sh '''
+                    for i in {1..10}; do
+                      curl -fsS "${HEALTH_URL}" && exit 0
+                      echo "Attente healthcheck club... $i/10"
+                      sleep 10
+                    done
+                    exit 1
+                '''
             }
-        }
-
-        stage('5. Déploiement docker-compose') {
-            steps {
-                sh "docker compose -f docker-compose.yml pull"
-                sh "docker compose -f docker-compose.yml up -d --force-recreate club evenement"
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "✅ CD terminé — Build #${TAG} déployé avec succès"
-        }
-        failure {
-            echo "❌ CD échoué — vérifiez les logs"
         }
     }
 }
