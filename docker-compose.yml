@@ -13,13 +13,16 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
       interval: 10s
       timeout: 5s
-      retries: 15
+      retries: 20
     restart: unless-stopped
     networks:
       - pidev-network
 
   eureka:
-    image: omarazzouz/eureka:latest
+    build:
+      context: ./microservices/eureka
+      dockerfile: Dockerfile
+    image: local/eureka:latest
     container_name: eureka-service
     ports:
       - "8761:8761"
@@ -37,8 +40,6 @@ services:
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.MySQLDialect
-
-      # IMPORTANT: ne pas utiliser localhost ici
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     depends_on:
