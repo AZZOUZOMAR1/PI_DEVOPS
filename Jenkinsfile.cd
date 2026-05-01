@@ -28,18 +28,23 @@ pipeline {
             }
         }
 
-        stage('3. Monitoring Club') {
-            steps {
-                sh "docker compose -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
-                sh '''
-                    for i in {1..10}; do
-                      curl -fsS "${HEALTH_URL}" && exit 0
-                      echo "Attente healthcheck club... $i/10"
-                      sleep 10
-                    done
-                    exit 1
-                '''
-            }
-        }
+      stage('3. Monitoring Club') {
+    steps {
+        sh "docker compose -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
+        sh '''
+            set -e
+            for i in $(seq 1 10); do
+              if curl -fsS "http://localhost:8085/actuator/health" > /dev/null; then
+                echo "Service club UP"
+                exit 0
+              fi
+              echo "Attente healthcheck club... $i/10"
+              sleep 10
+            done
+            echo "Healthcheck club KO"
+            exit 1
+        '''
+    }
+}
     }
 }
