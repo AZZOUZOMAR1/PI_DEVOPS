@@ -7,13 +7,15 @@ pipeline {
     }
 
     environment {
-        GIT_URL           = 'https://github.com/AZZOUZOMAR1/PI_DEVOPS.git'
-        GIT_BRANCH        = 'main'
-        GIT_CREDENTIALS   = 'JENKINS_OMAR'
+        GIT_URL             = 'https://github.com/AZZOUZOMAR1/PI_DEVOPS.git'
+        GIT_BRANCH          = 'main'
+        GIT_CREDENTIALS     = 'JENKINS_OMAR'
 
         COMPOSE_PROJECT_NAME = 'pidev'
         COMPOSE_FILE         = 'docker-compose.yml'
+
         SERVICE_NAME         = 'evenement'
+        CONTAINER_NAME       = 'evenement-service'
 
         HEALTH_URL           = 'http://127.0.0.1:8086/actuator/health'
     }
@@ -56,7 +58,28 @@ pipeline {
             }
         }
 
-        stage('3. Docker Pull + Deploy Evenement (sans deps)') {
+        stage('3. Reconcile conteneur evenement (évite conflit container_name)') {
+            steps {
+                sh '''
+                    set -e
+
+                    if docker inspect "${CONTAINER_NAME}" >/dev/null 2>&1; then
+                      PROJ="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "${CONTAINER_NAME}" 2>/dev/null || true)"
+                      echo "${CONTAINER_NAME} existe déjà. com.docker.compose.project=${PROJ}"
+
+                      # Si ce conteneur n'appartient pas à notre projet compose, il bloque le nom global.
+                      if [ "${PROJ}" != "${COMPOSE_PROJECT_NAME}" ]; then
+                        echo "Suppression de ${CONTAINER_NAME} (projet différent -> bloque le recreate sous -p ${COMPOSE_PROJECT_NAME})"
+                        docker rm -f "${CONTAINER_NAME}"
+                      fi
+                    else
+                      echo "${CONTAINER_NAME} n'existe pas encore -> OK"
+                    fi
+                '''
+            }
+        }
+
+        stage('4. Docker Pull + Deploy Evenement (sans deps)') {
             steps {
                 sh """
                     set -e
@@ -66,7 +89,7 @@ pipeline {
             }
         }
 
-        stage('4. Monitoring Evenement') {
+        stage('5. Monitoring Evenement') {
             steps {
                 sh "docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
 
@@ -76,18 +99,25 @@ pipeline {
                     for i in \$(seq 1 30); do
                       CODE=\$(curl --max-time 3 -sS -o /dev/null -w '%{http_code}' "${HEALTH_URL}")
                       echo "tentative \$i/30 - http_code=\$CODE"
+
                       if echo "\$CODE" | grep -qE '^200\$|^204\$'; then
                         ok=1
                         break
                       fi
+
                       sleep 10
                     done
 
                     if [ "\$ok" -ne 1 ]; then
                       echo "Healthcheck evenement KO"
                       curl -sv --max-time 3 "${HEALTH_URL}" || true
+
+                      echo "== logs evenement =="
                       docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} logs --tail=300 ${SERVICE_NAME} || true
-                      docker inspect -f "{{json .NetworkSettings.Ports}}" evenement-service || true
+
+                      echo "== publish ports inspect =="
+                      docker inspect -f "{{json .NetworkSettings.Ports}}" ${CONTAINER_NAME} || true
+
                       exit 1
                     fi
 
