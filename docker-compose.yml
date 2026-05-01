@@ -19,10 +19,7 @@ services:
       - pidev-network
 
   eureka:
-    build:
-      context: ./microservices/eureka
-      dockerfile: Dockerfile
-    image: local/eureka:latest
+    image: steeltoeoss/eureka-server:latest
     container_name: eureka-service
     ports:
       - "8761:8761"
