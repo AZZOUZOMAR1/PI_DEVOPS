@@ -1,47 +1,108 @@
 pipeline {
     agent any
 
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
     environment {
-        GIT_URL              = 'https://github.com/AZZOUZOMAR1/PI_DEVOPS.git'
-        GIT_BRANCH           = 'main'
-        GIT_CREDENTIALS       = 'JENKINS_OMAR'
+        GIT_URL           = 'https://github.com/AZZOUZOMAR1/PI_DEVOPS.git'
+        GIT_BRANCH        = 'main'
+        GIT_CREDENTIALS   = 'JENKINS_OMAR'
 
         COMPOSE_PROJECT_NAME = 'pidev'
         COMPOSE_FILE         = 'docker-compose.yml'
         SERVICE_NAME         = 'evenement'
+
+        HEALTH_URL           = 'http://127.0.0.1:8086/actuator/health'
     }
 
     stages {
+
         stage('1. Git Pull') {
             steps {
                 git branch: "${GIT_BRANCH}",
                     credentialsId: "${GIT_CREDENTIALS}",
                     url: "${GIT_URL}"
+
                 sh "git pull origin ${GIT_BRANCH}"
             }
         }
 
-        stage('2. Docker Pull + Deploy Evenement') {
+        stage('2. Ensure infra (mysql + eureka) si absent') {
             steps {
-                sh "docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} pull ${SERVICE_NAME}"
-                sh "docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} up -d --force-recreate ${SERVICE_NAME}"
+                sh '''
+                    set -e
+
+                    need_mysql=0
+                    need_eureka=0
+
+                    if ! docker ps --format '{{.Names}}' | grep -qx 'mysql-service'; then
+                      need_mysql=1
+                    fi
+
+                    if ! docker ps --format '{{.Names}}' | grep -qx 'eureka-service'; then
+                      need_eureka=1
+                    fi
+
+                    if [ "$need_mysql" -eq 1 ] || [ "$need_eureka" -eq 1 ]; then
+                      echo "Démarrage infra manquante (mysql/eureka) via compose project ${COMPOSE_PROJECT_NAME}..."
+                      docker compose -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" up -d mysql eureka
+                    else
+                      echo "Infra déjà running: mysql-service + eureka-service OK"
+                    fi
+                '''
             }
         }
 
-        stage('3. Monitoring Evenement') {
+        stage('3. Docker Pull + Deploy Evenement (sans deps)') {
+            steps {
+                sh """
+                    set -e
+                    docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} pull ${SERVICE_NAME}
+                    docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} up -d --no-deps --force-recreate ${SERVICE_NAME}
+                """
+            }
+        }
+
+        stage('4. Monitoring Evenement') {
             steps {
                 sh "docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
-                sh '''
-                    CODE="$(curl --max-time 3 -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8086/actuator/health)"
-                    echo "http_code=$CODE"
-                    echo "$CODE" | grep -qE '^200$|^204$'
-                '''
+
+                sh """
+                    set +e
+                    ok=0
+                    for i in \$(seq 1 30); do
+                      CODE=\$(curl --max-time 3 -sS -o /dev/null -w '%{http_code}' "${HEALTH_URL}")
+                      echo "tentative \$i/30 - http_code=\$CODE"
+                      if echo "\$CODE" | grep -qE '^200\$|^204\$'; then
+                        ok=1
+                        break
+                      fi
+                      sleep 10
+                    done
+
+                    if [ "\$ok" -ne 1 ]; then
+                      echo "Healthcheck evenement KO"
+                      curl -sv --max-time 3 "${HEALTH_URL}" || true
+                      docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} logs --tail=300 ${SERVICE_NAME} || true
+                      docker inspect -f "{{json .NetworkSettings.Ports}}" evenement-service || true
+                      exit 1
+                    fi
+
+                    echo "Monitoring Evenement OK"
+                """
             }
         }
     }
 
     post {
+        success {
+            echo "CD Evenement OK"
+        }
         failure {
+            echo "CD Evenement KO"
             sh "docker compose -p ${COMPOSE_PROJECT_NAME} -f ${COMPOSE_FILE} logs --tail=200 ${SERVICE_NAME} || true"
         }
     }
