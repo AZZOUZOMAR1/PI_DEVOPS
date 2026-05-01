@@ -27,24 +27,32 @@ pipeline {
                 sh "docker compose -f ${COMPOSE_FILE} up -d --force-recreate ${SERVICE_NAME}"
             }
         }
-
-      stage('3. Monitoring Club') {
+stage('3. Monitoring Club') {
     steps {
         sh "docker compose -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
         sh '''
-            set -e
-            for i in $(seq 1 10); do
-              if curl -fsS "http://localhost:8085/actuator/health" > /dev/null; then
+            set +e
+            ok=0
+            for i in $(seq 1 18); do
+              curl --max-time 3 -fsS "http://localhost:8085/actuator/health" >/dev/null
+              if [ $? -eq 0 ]; then
                 echo "Service club UP"
-                exit 0
+                ok=1
+                break
               fi
-              echo "Attente healthcheck club... $i/10"
+              echo "Attente healthcheck club... $i/18"
               sleep 10
             done
-            echo "Healthcheck club KO"
-            exit 1
+
+            if [ $ok -ne 1 ]; then
+              echo "Healthcheck club KO - dump logs"
+              docker compose -f docker-compose.yml logs --tail=200 club || true
+              docker compose -f docker-compose.yml ps club || true
+              exit 1
+            fi
         '''
     }
 }
+    
     }
 }
