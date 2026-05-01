@@ -34,60 +34,47 @@ stage('3. Monitoring Club') {
         sh '''
             set +e
 
-            HEALTH_HOST_URL="http://127.0.0.1:8085/actuator/health"
-            HEALTH_IN_CONTAINER_URL="http://127.0.0.1:8080/actuator/health"
+            HEALTH_URL_HOST="http://127.0.0.1:8085/actuator/health"
+            HEALTH_URL_IN_CONTAINER="http://127.0.0.1:8080/actuator/health"
 
-            echo "== Diagnostics rapides (1 tentative) =="
-            echo "-- curl host --"
-            curl -sv --max-time 3 "$HEALTH_HOST_URL" || true
-            echo
-            echo "-- curl dans le container (vérif actuator réel sur 8080) --"
-            docker compose -f docker-compose.yml exec -T club sh -lc "command -v curl >/dev/null 2>&1 && curl -sv --max-time 3 \"$HEALTH_IN_CONTAINER_URL\" || wget -qO- --timeout=3 \"$HEALTH_IN_CONTAINER_URL\"" || true
-            echo
+            dump_on_fail() {
+              echo "== Diagnostics KO =="
+              echo "-- http_code host actuator --"
+              curl -sv --max-time 3 "$HEALTH_URL_HOST" || true
+              echo
+              echo "-- http_code depuis le container club (8080) --"
+              docker compose -f docker-compose.yml exec -T club \
+                sh -lc "apk add --no-cache curl >/dev/null 2>&1 || true; curl -sv --max-time 3 \"$HEALTH_URL_IN_CONTAINER\" || wget -qO- --timeout=3 \"$HEALTH_URL_IN_CONTAINER\" || true" || true
+
+              echo
+              echo "-- logs club --"
+              docker compose -f docker-compose.yml logs --tail=300 club || true
+
+              echo
+              echo "-- publish ports inspect --"
+              docker inspect -f "{{json .NetworkSettings.Ports}}" club-service || true
+            }
 
             ok=0
             for i in $(seq 1 24); do
-              curl --max-time 3 -fsS "$HEALTH_HOST_URL" >/dev/null
-              rc=$?
+              CODE="$(curl --max-time 3 -sS -o /dev/null -w '%{http_code}' "$HEALTH_URL_HOST")"
+              echo "tentative $i/24 - http_code=$CODE"
 
-              # Si host KO mais container OK => souvent mapping / iptables / mauvais port host
-              if [ "$rc" -ne 0 ]; then
-                docker compose -f docker-compose.yml exec -T club sh -lc "command -v curl >/dev/null 2>&1 && curl --max-time 3 -fsS \"$HEALTH_IN_CONTAINER_URL\" >/dev/null || wget -qO- --timeout=3 \"$HEALTH_IN_CONTAINER_URL\" >/dev/null" >/dev/null 2>&1
-                ic=$?
-              else
-                ic=0
-              fi
-
-              if [ "$rc" -eq 0 ]; then
-                echo "✅ Club health OK (via host:8085 -> container:8080) tentative $i/24"
+              if echo "$CODE" | grep -qE '^200$|^204$'; then
                 ok=1
                 break
               fi
 
-              if [ "$rc" -ne 0 ] && [ "$ic" -eq 0 ]; then
-                echo "⚠️  Health OK dans le container mais KO depuis localhost:8085 -> problème probable de publish/mapping/host networking (tentative $i/24)"
-              fi
-
-              echo "⏳ Attente healthcheck club... $i/24 (host_rc=$rc container_rc_fallback=$ic)"
               sleep 10
             done
 
             if [ "$ok" -ne 1 ]; then
               echo "❌ Healthcheck club KO"
-
-              echo "== docker compose ps =="
-              docker compose -f docker-compose.yml ps || true
-
-              echo "== club logs (tail) =="
-              docker compose -f docker-compose.yml logs --tail=300 club || true
-
-              echo "== inspect publisher ports =="
-              docker inspect -f "{{json .NetworkSettings.Ports}}" club-service || true
-
+              dump_on_fail
               exit 1
             fi
 
-            echo "✅ Monitoring Club terminé"
+            echo "✅ Monitoring Club OK"
         '''
     }
 }
