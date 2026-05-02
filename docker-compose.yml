@@ -35,19 +35,14 @@ services:
     environment:
       SERVER_PORT: "8080"
       SERVER_ADDRESS: "0.0.0.0"
-
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/clubdb?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
-
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
-
-      # Actuator (healthcheck Jenkins)
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
       MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
-
     depends_on:
       mysql:
         condition: service_healthy
@@ -65,19 +60,14 @@ services:
     environment:
       SERVER_PORT: "8081"
       SERVER_ADDRESS: "0.0.0.0"
-
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/clubdb?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
-
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
-
-      # Actuator (healthcheck Jenkins)
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
       MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
-
     depends_on:
       mysql:
         condition: service_healthy
@@ -89,7 +79,7 @@ services:
 
 networks:
   pidev-network:
-    driver: bridge
+    external: true
 
 volumes:
   mysql-data:
