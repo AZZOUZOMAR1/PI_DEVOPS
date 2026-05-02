@@ -22,13 +22,29 @@ pipeline {
         }
 
         stage('2. Docker Pull + Deploy Evenement') {
-            steps {
-                sh "docker compose -f ${COMPOSE_FILE} pull ${SERVICE_NAME}"
-                sh "docker stop evenement-service || true"
-                sh "docker rm evenement-service || true"
-                sh "docker compose -f ${COMPOSE_FILE} up -d --no-deps ${SERVICE_NAME}"
-            }
+    steps {
+        dir('/var/lib/jenkins/workspace/evenement_CD') {
+            sh "docker compose -f ${COMPOSE_FILE} pull ${SERVICE_NAME}"
+            sh "docker stop evenement-service || true"
+            sh "docker rm evenement-service || true"
+            // Démarrer mysql et eureka si pas encore démarrés
+            sh "docker compose -f ${COMPOSE_FILE} up -d mysql eureka"
+            // Attendre que MySQL soit healthy
+            sh '''
+                echo "Attente MySQL..."
+                for i in $(seq 1 20); do
+                    if docker compose -f docker-compose.yml exec -T mysql mysqladmin ping -h localhost -proot --silent 2>/dev/null; then
+                        echo "✅ MySQL prêt"
+                        break
+                    fi
+                    echo "MySQL pas prêt... $i/20"
+                    sleep 5
+                done
+            '''
+            sh "docker compose -f ${COMPOSE_FILE} up -d --no-deps ${SERVICE_NAME}"
         }
+    }
+}
 
         stage('3. Monitoring Evenement') {
             steps {
