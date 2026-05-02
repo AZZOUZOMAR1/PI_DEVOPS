@@ -5,13 +5,12 @@ pipeline {
         GIT_URL         = 'https://github.com/AZZOUZOMAR1/PI_DEVOPS.git'
         GIT_BRANCH      = 'main'
         GIT_CREDENTIALS = 'JENKINS_OMAR'
-
-        SERVICE_NAME = 'club'
-        COMPOSE_FILE = 'docker-compose.yml'
-        HEALTH_URL   = 'http://localhost:8081/actuator/health'
+        SERVICE_NAME    = 'club'
+        COMPOSE_FILE    = 'docker-compose.yml'
     }
 
     stages {
+
         stage('1. Git Pull') {
             steps {
                 git branch: "${GIT_BRANCH}",
@@ -24,60 +23,84 @@ pipeline {
         stage('2. Docker Pull + Deploy Club') {
             steps {
                 sh "docker compose -f ${COMPOSE_FILE} pull ${SERVICE_NAME}"
-                sh "docker compose -f ${COMPOSE_FILE} up -d --force-recreate ${SERVICE_NAME}"
+                sh "docker stop club-service || true"
+                sh "docker rm club-service || true"
+
+                sh '''
+                    if ! docker ps --format "{{.Names}}" | grep -q "^mysql-service$"; then
+                        echo "Démarrage MySQL..."
+                        docker compose -f docker-compose.yml up -d mysql
+                        sleep 20
+                    else
+                        echo "✅ MySQL déjà en cours d execution"
+                    fi
+                '''
+
+                sh '''
+                    if ! docker ps --format "{{.Names}}" | grep -q "^eureka-service$"; then
+                        echo "Démarrage Eureka..."
+                        docker compose -f docker-compose.yml up -d eureka
+                        sleep 10
+                    else
+                        echo "✅ Eureka déjà en cours d execution"
+                    fi
+                '''
+
+                sh '''
+                    echo "Attente MySQL ready..."
+                    for i in $(seq 1 20); do
+                        if docker exec mysql-service mysqladmin ping -h localhost -proot --silent 2>/dev/null; then
+                            echo "✅ MySQL prêt"
+                            break
+                        fi
+                        echo "MySQL pas prêt... $i/20"
+                        sleep 5
+                    done
+                '''
+
+                sh "docker compose -f ${COMPOSE_FILE} up -d --no-deps ${SERVICE_NAME}"
             }
         }
-stage('3. Monitoring Club') {
-    steps {
-        sh "docker compose -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
 
-        sh '''
-            set +e
+        stage('3. Monitoring Club') {
+            steps {
+                sh "docker compose -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
 
-            HEALTH_URL_HOST="http://127.0.0.1:8085/actuator/health"
-            HEALTH_URL_IN_CONTAINER="http://127.0.0.1:8080/actuator/health"
+                sh '''
+                    set +e
+                    echo "Attente 40s démarrage Spring Boot..."
+                    sleep 40
 
-            dump_on_fail() {
-              echo "== Diagnostics KO =="
-              echo "-- http_code host actuator --"
-              curl -sv --max-time 3 "$HEALTH_URL_HOST" || true
-              echo
-              echo "-- http_code depuis le container club (8080) --"
-              docker compose -f docker-compose.yml exec -T club \
-                sh -lc "apk add --no-cache curl >/dev/null 2>&1 || true; curl -sv --max-time 3 \"$HEALTH_URL_IN_CONTAINER\" || wget -qO- --timeout=3 \"$HEALTH_URL_IN_CONTAINER\" || true" || true
+                    ok=0
+                    for i in $(seq 1 18); do
+                        CODE="$(curl --max-time 3 -sS -o /dev/null -w '%{http_code}' http://localhost:8085/actuator/health)"
+                        echo "tentative $i/18 - http_code=$CODE"
+                        if echo "$CODE" | grep -qE '^200$|^204$'; then
+                            ok=1
+                            break
+                        fi
+                        sleep 10
+                    done
 
-              echo
-              echo "-- logs club --"
-              docker compose -f docker-compose.yml logs --tail=300 club || true
+                    if [ "$ok" -ne 1 ]; then
+                        echo "❌ Healthcheck club KO - dump logs"
+                        docker compose -f docker-compose.yml logs --tail=100 club
+                        docker compose -f docker-compose.yml ps club
+                        exit 1
+                    fi
 
-              echo
-              echo "-- publish ports inspect --"
-              docker inspect -f "{{json .NetworkSettings.Ports}}" club-service || true
+                    echo "✅ Monitoring Club OK"
+                '''
             }
-
-            ok=0
-            for i in $(seq 1 24); do
-              CODE="$(curl --max-time 3 -sS -o /dev/null -w '%{http_code}' "$HEALTH_URL_HOST")"
-              echo "tentative $i/24 - http_code=$CODE"
-
-              if echo "$CODE" | grep -qE '^200$|^204$'; then
-                ok=1
-                break
-              fi
-
-              sleep 10
-            done
-
-            if [ "$ok" -ne 1 ]; then
-              echo "❌ Healthcheck club KO"
-              dump_on_fail
-              exit 1
-            fi
-
-            echo "✅ Monitoring Club OK"
-        '''
+        }
     }
-}
-    
+
+    post {
+        success {
+            echo "✅ Club déployé avec succès"
+        }
+        failure {
+            echo "❌ Déploiement Club échoué"
+        }
     }
 }
