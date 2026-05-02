@@ -24,7 +24,7 @@ pipeline {
         stage('2. Docker Pull + Deploy Evenement') {
             steps {
                 sh "docker compose -f ${COMPOSE_FILE} pull ${SERVICE_NAME}"
-                sh "docker compose -f ${COMPOSE_FILE} up -d --force-recreate ${SERVICE_NAME}"
+                sh "docker compose -f ${COMPOSE_FILE} up -d --force-recreate --no-deps ${SERVICE_NAME}"
             }
         }
 
@@ -44,7 +44,7 @@ pipeline {
                       curl -sv --max-time 3 "$HEALTH_URL_HOST" || true
                       echo
                       echo "-- http_code depuis le container evenement (8081) --"
-                      docker compose -f docker-compose.yml exec -T evenement \\
+                      docker compose -f docker-compose.yml exec -T evenement \
                         sh -lc "apk add --no-cache curl >/dev/null 2>&1 || true; curl -sv --max-time 3 \"$HEALTH_URL_IN_CONTAINER\" || wget -qO- --timeout=3 \"$HEALTH_URL_IN_CONTAINER\" || true" || true
 
                       echo
