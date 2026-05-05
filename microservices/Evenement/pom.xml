@@ -29,6 +29,8 @@
 	<properties>
 		<java.version>17</java.version>
 		<spring-cloud.version>2025.0.1</spring-cloud.version>
+		<!-- Sécurité: Tomcat embarqué pour CVE Trivy (10.1.50 → 10.1.54) -->
+		<tomcat.version>10.1.54</tomcat.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -46,6 +48,12 @@
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>
 			<artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+		</dependency>
+
+		<!-- Force bcprov 1.84 dans le fat JAR (CVE Trivy sur 1.80) -->
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
 		</dependency>
 
 		<dependency>
@@ -77,6 +85,11 @@
 				<version>${spring-cloud.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.bouncycastle</groupId>
+				<artifactId>bcprov-jdk18on</artifactId>
+				<version>1.84</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
