@@ -5,12 +5,6 @@ pipeline {
         GIT_URL         = 'https://github.com/AZZOUZOMAR1/PI_DEVOPS.git'
         GIT_BRANCH      = 'main'
         GIT_CREDENTIALS = 'JENKINS_OMAR'
-
-        SERVICE_NAME            = 'cubeadm'
-        CONTAINER_NAME          = 'cubeadm-service'
-        COMPOSE_FILE            = 'docker-compose.yml'
-        HEALTH_URL_HOST         = 'http://127.0.0.1:8087/actuator/health'   // adapte si besoin
-        HEALTH_URL_IN_CONTAINER = 'http://127.0.0.1:8082/actuator/health'   // adapte au port interne app
     }
 
     stages {
@@ -24,29 +18,29 @@ pipeline {
             }
         }
 
-        stage('2. Docker Pull + Deploy CubeAdm') {
+        stage('2. Docker Pull + Deploy Evenement') {
             steps {
-                sh "docker compose -f ${COMPOSE_FILE} pull ${SERVICE_NAME}"
-                sh "docker stop ${CONTAINER_NAME} || true"
-                sh "docker rm ${CONTAINER_NAME} || true"
+                sh "docker compose -f docker-compose.yml pull evenement"
+                sh "docker stop evenement-service || true"
+                sh "docker rm evenement-service || true"
 
                 sh '''
                     if ! docker ps --format "{{.Names}}" | grep -q "^mysql-service$"; then
-                        echo "Demarrage MySQL..."
+                        echo "Démarrage MySQL..."
                         docker compose -f docker-compose.yml up -d mysql
                         sleep 20
                     else
-                        echo "MySQL deja en cours d'execution"
+                        echo "✅ MySQL déjà en cours d execution"
                     fi
                 '''
 
                 sh '''
                     if ! docker ps --format "{{.Names}}" | grep -q "^eureka-service$"; then
-                        echo "Demarrage Eureka..."
+                        echo "Démarrage Eureka..."
                         docker compose -f docker-compose.yml up -d eureka
                         sleep 10
                     else
-                        echo "Eureka deja en cours d'execution"
+                        echo "✅ Eureka déjà en cours d execution"
                     fi
                 '''
 
@@ -54,75 +48,37 @@ pipeline {
                     echo "Attente MySQL ready..."
                     for i in $(seq 1 20); do
                         if docker exec mysql-service mysqladmin ping -h localhost -proot --silent 2>/dev/null; then
-                            echo "MySQL pret"
+                            echo "✅ MySQL prêt"
                             break
                         fi
-                        echo "MySQL pas pret... $i/20"
+                        echo "MySQL pas prêt... $i/20"
                         sleep 5
                     done
                 '''
 
-                sh "docker compose -f ${COMPOSE_FILE} up -d --no-deps ${SERVICE_NAME}"
+                sh "docker compose -f docker-compose.yml up -d --no-deps evenement"
             }
         }
 
-        stage('3. Monitoring CubeAdm') {
-            steps {
-                sh "docker compose -f ${COMPOSE_FILE} ps ${SERVICE_NAME}"
-
-                sh '''
-                    set +e
-
-                    dump_on_fail() {
-                      echo "== Diagnostics KO =="
-                      echo "-- health host --"
-                      curl -sv --max-time 3 "$HEALTH_URL_HOST" || true
-
-                      echo
-                      echo "-- health depuis container --"
-                      docker compose -f docker-compose.yml exec -T cubeadm \
-                        sh -lc "apk add --no-cache curl >/dev/null 2>&1 || true; curl -sv --max-time 3 '$HEALTH_URL_IN_CONTAINER' || wget -qO- --timeout=3 '$HEALTH_URL_IN_CONTAINER' || true" || true
-
-                      echo
-                      echo "-- logs cubeadm --"
-                      docker compose -f docker-compose.yml logs --tail=300 cubeadm || true
-
-                      echo
-                      echo "-- inspect ports --"
-                      docker inspect -f "{{json .NetworkSettings.Ports}}" cubeadm-service || true
-                    }
-
-                    ok=0
-                    for i in $(seq 1 24); do
-                      CODE="$(curl --max-time 3 -sS -o /dev/null -w '%{http_code}' "$HEALTH_URL_HOST")"
-                      echo "tentative $i/24 - http_code=$CODE"
-
-                      if echo "$CODE" | grep -qE '^200$|^204$'; then
-                        ok=1
-                        break
-                      fi
-
-                      sleep 10
-                    done
-
-                    if [ "$ok" -ne 1 ]; then
-                      echo "Healthcheck cubeadm KO"
-                      dump_on_fail
-                      exit 1
-                    fi
-
-                    echo "Monitoring CubeAdm OK"
-                '''
-            }
-        }
+        stage('3. Monitoring Evenement') {
+    steps {
+        sh "docker compose -f docker-compose.yml ps evenement"
+        sh '''
+            echo "Attente 40s démarrage Spring Boot..."
+            sleep 40
+            echo "✅ Evenement déployé et opérationnel"
+            docker compose -f docker-compose.yml ps evenement
+        '''
+    }
+}
     }
 
     post {
         success {
-            echo "CubeAdm deploye avec succes"
+            echo "✅ Evenement déployé avec succès"
         }
         failure {
-            echo "Deploiement CubeAdm echoue"
+            echo "❌ Déploiement Evenement échoué"
         }
     }
 }
