@@ -55,7 +55,17 @@
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcprov-jdk18on</artifactId>
 		</dependency>
+         <!-- Spring Boot Actuator -->
+         <dependency>
+         <groupId>org.springframework.boot</groupId>
+         <artifactId>spring-boot-starter-actuator</artifactId>
+         </dependency>
 
+        <!-- Micrometer Prometheus -->
+       <dependency>
+       <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
